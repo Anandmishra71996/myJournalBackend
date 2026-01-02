@@ -1,9 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import Joi from 'joi';
 
-export const validateRequest = (schema: Joi.ObjectSchema) => {
+export const validateRequest = (schema: Joi.ObjectSchema, source: 'body' | 'query' | 'params' = 'body') => {
     return (req: Request, res: Response, next: NextFunction) => {
-        const { error } = schema.validate(req.body, { abortEarly: false });
+        const { error } = schema.validate(req[source], { abortEarly: false });
 
         if (error) {
             const errors = error.details.map((detail) => ({
