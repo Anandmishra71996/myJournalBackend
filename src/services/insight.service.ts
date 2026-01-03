@@ -58,8 +58,17 @@ export class InsightsService {
                 return existingInsight;
             }
 
-            // Generate new insight
-            logger.info(`Generating new insight for user ${userId}, week ${weekStartStr}`);
+            // Fetch user
+            const user = await User.findById(userId);
+            if (!user) {
+                throw new Error('User not found');
+            }
+
+            // Check if profile is completed
+            const isProfileCompleted = user.isProfileCompleted && user.aiEnabled;
+            if (!isProfileCompleted) {
+                throw new Error('Profile is not completed. Please complete your profile before generating insights.');
+            }
 
             // Fetch data for the week
             const journals = await Journal.find({
@@ -70,16 +79,30 @@ export class InsightsService {
                 },
             }).sort({ date: 1 });
 
+            // Check if at least 3 journal entries exist
+            if (journals.length < 3) {
+                throw new Error(`At least 3 journal entries are required to generate insights. You have ${journals.length} entries.`);
+            }
+
             const goals = await Goal.find({
                 userId,
                 status: { $in: ['active', 'completed', 'paused'] },
             });
 
-            const user = await User.findById(userId);
-
-            if (!user) {
-                throw new Error('User not found');
+            // Check if at least one goal exists
+            if (goals.length === 0) {
+                throw new Error('At least one goal is required to generate insights.');
             }
+
+            // Check if at least 4 days have passed since the week start
+            const now = new Date();
+            const daysPassed = Math.floor((now.getTime() - weekStartDate.getTime()) / (1000 * 60 * 60 * 24));
+            if (daysPassed < 4) {
+                throw new Error(`At least 4 days must pass before generating insights for this week. ${4 - daysPassed} days remaining.`);
+            }
+
+            // Generate new insight
+            logger.info(`Generating new insight for user ${userId}, week ${weekStartStr}`);
 
             // Generate AI insights
             const aiResponse = await this.callAIForInsights(
