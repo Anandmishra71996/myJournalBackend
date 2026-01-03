@@ -90,13 +90,22 @@ export class InsightsService {
                 weekEndDate
             );
 
-            // Prepare goal summaries
-            const goalSummaries = aiResponse.goalSummaries.map((gs) => ({
-                goalId: gs.goalId,
-                goalTitle: goals.find((g) => g._id.toString() === gs.goalId)?.title || 'Unknown Goal',
-                status: gs.status,
-                explanation: gs.explanation,
-            }));
+            // Prepare goal summaries - filter out invalid goal IDs
+            const goalSummaries = aiResponse.goalSummaries
+                .map((gs) => {
+                    const goal = goals.find((g) => g._id.toString() === gs.goalId);
+                    if (!goal) {
+                        logger.warn(`Goal ID ${gs.goalId} not found in user's goals, skipping`);
+                        return null;
+                    }
+                    return {
+                        goalId: gs.goalId,
+                        goalTitle: goal.title,
+                        status: gs.status,
+                        explanation: gs.explanation,
+                    };
+                })
+                .filter((summary): summary is NonNullable<typeof summary> => summary !== null);
 
             // Create or update insight
             const insightData = {
@@ -172,7 +181,7 @@ export class InsightsService {
         const weekStartStr = weekStart.toISOString().split('T')[0];
         const weekEndStr = weekEnd.toISOString().split('T')[0];
 
-        let prompt = `You are a thoughtful journaling coach providing weekly insights.\n\n`;
+        let prompt = `You are a thoughtful journaling coach integrated in a jounal app which  providing weekly insights. and give meaningfull suggestion to user. on journaling page we asked multiple question which is mentioned below \n\n`;
         prompt += `Week: ${weekStartStr} to ${weekEndStr}\n`;
         prompt += `User: ${user.name || 'User'}\n`;
 
@@ -191,7 +200,39 @@ export class InsightsService {
             journals.forEach((journal, index) => {
                 const date = new Date(journal.date).toISOString().split('T')[0];
                 prompt += `\n[${index + 1}] ${date}:\n`;
-                prompt += `${journal.content.substring(0, 200)}...\n`;
+
+                // Add what happened
+                if (journal.content?.whatHappened) {
+                    prompt += `What Happened: ${journal.content.whatHappened.substring(0, 300)}\n`;
+                }
+
+                // Add wins
+                if (journal.content?.wins && journal.content.wins.length > 0) {
+                    prompt += `Wins: ${journal.content.wins.join(', ')}\n`;
+                }
+
+                // Add challenges
+                if (journal.content?.challenges && journal.content.challenges.length > 0) {
+                    prompt += `Challenges: ${journal.content.challenges.join(', ')}\n`;
+                }
+
+                // Add gratitude
+                if (journal.content?.gratitude && journal.content.gratitude.length > 0) {
+                    prompt += `Gratitude: ${journal.content.gratitude.join(', ')}\n`;
+                }
+
+                // Add lessons learned
+                if (journal.content?.lessonsLearned) {
+                    prompt += `Lessons Learned: ${journal.content.lessonsLearned}\n`;
+                }
+
+                // Add mood and energy
+                if (journal.mood?.score) {
+                    prompt += `Mood Score: ${journal.mood.score}/10\n`;
+                }
+                if (journal.mood?.energy) {
+                    prompt += `Energy Level: ${journal.mood.energy}/10\n`;
+                }
             });
         }
 
@@ -200,7 +241,9 @@ export class InsightsService {
             prompt += `No active goals.\n`;
         } else {
             goals.forEach((goal, index) => {
-                prompt += `\n[${index + 1}] ${goal.title} (${goal.type}, ${goal.status})\n`;
+                prompt += `\n[${index + 1}] ID: ${goal._id.toString()}\n`;
+                prompt += `Title: ${goal.title}\n`;
+                prompt += `Type: ${goal.type}, Status: ${goal.status}\n`;
                 prompt += `Category: ${goal.category}\n`;
                 if (goal.why) prompt += `Why: ${goal.why}\n`;
             });
@@ -214,7 +257,7 @@ export class InsightsService {
         prompt += `  ],\n`;
         prompt += `  "goalSummaries": [\n`;
         prompt += `    {\n`;
-        prompt += `      "goalId": "goal MongoDB ID",\n`;
+        prompt += `      "goalId": "USE THE EXACT ID FROM THE GOALS LIST ABOVE",\n`;
         prompt += `      "status": "aligned | partially_aligned | needs_adjustment",\n`;
         prompt += `      "explanation": "brief explanation of how journals relate to this goal"\n`;
         prompt += `    }\n`;
@@ -226,6 +269,8 @@ export class InsightsService {
         prompt += `- Reference actual journal content when possible\n`;
         prompt += `- Keep explanations concise (1-2 sentences)\n`;
         prompt += `- Suggestion should be practical and achievable\n`;
+        prompt += `- For goalSummaries, use the EXACT goal ID from the list above (e.g., "67775f1e8a2b3c4d5e6f7890")\n`;
+        prompt += `- Only include goals that are actually mentioned or related to the journal entries\n`;
         prompt += `- Return ONLY valid JSON, no additional text\n`;
 
         return prompt;
