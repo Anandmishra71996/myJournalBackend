@@ -4,8 +4,8 @@ import { StringOutputParser } from '@langchain/core/output_parsers';
 import { RunnableSequence } from '@langchain/core/runnables';
 import { getLLM, getEmbeddings } from '../config/openai';
 import { Conversation } from '../models/conversation.model';
-import { getPineconeService } from './pinecone.service';
 import { logger } from '../utils/logger';
+import { getPineconeVectorService } from './vector/pinecone.service';
 
 export class ChatService {
     private llm;
@@ -20,7 +20,7 @@ export class ChatService {
             chunkSize: 1000,
             chunkOverlap: 200,
         });
-        this.pinecone = getPineconeService();
+        this.pinecone = getPineconeVectorService();
     }
 
     async chat(
