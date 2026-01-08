@@ -13,7 +13,8 @@ import routes from './routes';
 import { logger } from './utils/logger';
 
 const app: Express = express();
-const PORT = process.env.PORT || 5000;
+const PORT: number = Number(process.env.PORT) || 5000;
+const HOSTNAME: string = process.env.HOSTNAME || 'localhost';
 
 // Middleware
 app.use(helmet());
@@ -41,7 +42,7 @@ const startServer = async () => {
     try {
         await connectDatabase();
 
-        app.listen(PORT, () => {
+        app.listen(PORT, HOSTNAME, () => {
             logger.info(`🚀 Server is running on port ${PORT}`);
             logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
         });

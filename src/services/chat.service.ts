@@ -3,14 +3,15 @@ import { PromptTemplate } from '@langchain/core/prompts';
 import { StringOutputParser } from '@langchain/core/output_parsers';
 import { RunnableSequence } from '@langchain/core/runnables';
 import { getLLM, getEmbeddings } from '../config/openai';
-import { VectorStore } from '../models/vectorStore.model';
 import { Conversation } from '../models/conversation.model';
+import { getPineconeService } from './pinecone.service';
 import { logger } from '../utils/logger';
 
 export class ChatService {
     private llm;
     private embeddings;
     private textSplitter;
+    private pinecone;
 
     constructor() {
         this.llm = getLLM();
@@ -19,6 +20,7 @@ export class ChatService {
             chunkSize: 1000,
             chunkOverlap: 200,
         });
+        this.pinecone = getPineconeService();
     }
 
     async chat(
@@ -161,46 +163,17 @@ Answer:`);
             // Generate embedding for the query
             const queryEmbedding = await this.embeddings.embedQuery(query);
 
-            // Find similar documents using cosine similarity
-            const similarDocs = await VectorStore.aggregate([
-                {
-                    $match: { userId: userId }
-                },
-                {
-                    $addFields: {
-                        similarity: {
-                            $let: {
-                                vars: {
-                                    dotProduct: {
-                                        $reduce: {
-                                            input: { $range: [0, { $size: '$embedding' }] },
-                                            initialValue: 0,
-                                            in: {
-                                                $add: [
-                                                    '$$value',
-                                                    {
-                                                        $multiply: [
-                                                            { $arrayElemAt: ['$embedding', '$$this'] },
-                                                            { $arrayElemAt: [queryEmbedding, '$$this'] }
-                                                        ]
-                                                    }
-                                                ]
-                                            }
-                                        }
-                                    }
-                                },
-                                in: '$$dotProduct'
-                            }
-                        }
-                    }
-                },
-                { $sort: { similarity: -1 } },
-                { $limit: topK }
-            ]);
+            // Query Pinecone for similar documents
+            const similarDocs = await this.pinecone.querySimilar(
+                queryEmbedding,
+                topK,
+                { userId } // Filter by userId
+            );
 
-            // Format context
+            // Extract content from metadata
             const context = similarDocs
-                .map((doc) => doc.content)
+                .map((doc) => doc.metadata.content as string)
+                .filter((content) => content)
                 .join('\n\n---\n\n');
 
             return context || 'No relevant context found.';
