@@ -11,6 +11,7 @@ import { errorHandler } from "./middleware/errorHandler";
 import { connectDatabase } from "./config/database";
 import routes from "./routes";
 import { logger } from "./utils/logger";
+import { initializeCronJobs, stopCronJobs } from "./crons";
 
 const app: Express = express();
 const PORT: number = Number(process.env.PORT) || 5000;
@@ -46,7 +47,10 @@ const startServer = async () => {
   try {
     await connectDatabase();
 
-    app.listen(PORT, () => {
+    // Initialize cron jobs after database connection
+    initializeCronJobs();
+
+    app.listen(PORT, HOSTNAME, () => {
       logger.info(`🚀 Server is running on port ${PORT}`);
       logger.info(`Environment: ${process.env.NODE_ENV || "development"}`);
     });
@@ -55,6 +59,19 @@ const startServer = async () => {
     process.exit(1);
   }
 };
+
+// Graceful shutdown
+process.on("SIGTERM", () => {
+  logger.info("SIGTERM signal received: closing server gracefully");
+  stopCronJobs();
+  process.exit(0);
+});
+
+process.on("SIGINT", () => {
+  logger.info("SIGINT signal received: closing server gracefully");
+  stopCronJobs();
+  process.exit(0);
+});
 
 startServer();
 
